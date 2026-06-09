@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Pipeline output
+output/
+*.wav
+*.mp4
+
+# IDE / Kiro
+.kiro/
+
+# Logs
+error.log
+*.log

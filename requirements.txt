@@ -1,0 +1,23 @@
+# Core
+pyyaml>=6.0
+numpy<2.0          # torch 2.2.2 cu121 wheels are built against numpy 1.x
+tqdm>=4.66
+
+# Transcription
+# torch/torchaudio installed separately from the CUDA index:
+#   pip install torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
+ctranslate2<4.5
+faster-whisper==1.0.3   # WhisperX's `av` dep won't build on Windows; FW has native word timestamps
+
+# Video / frames
+opencv-python==4.9.0.80   # 4.13 requires numpy>=2; pin to a numpy-1.x compatible build
+
+# Audio separation
+demucs>=4.0.0             # CPU-based source separation
+
+# Active Speaker Detection
+mediapipe>=0.10.0         # Face mesh detection for ASD
+protobuf==3.20.*          # Fix compatibility with mediapipe
+
+# VLM via Ollama (HTTP)
+requests>=2.31
