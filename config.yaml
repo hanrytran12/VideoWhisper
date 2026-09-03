@@ -1,47 +1,52 @@
-# Pipeline config — tinh chỉnh cho RTX 3050 Laptop 4GB VRAM
+# Pipeline config — tuned for RTX 3050 Laptop, 4GB VRAM
 
 output_root: output
 
 transcribe:
   model: medium          # small | medium | large-v3-turbo
   device: cuda           # cuda | cpu
-  compute_type: int8     # int8 tiết kiệm VRAM; float16 nếu đủ chỗ
+  compute_type: int8     # int8 saves VRAM; float16 if there's room
   language: ja           # vi | ja | en | null (auto-detect)
   batch_size: 8
-  vad_filter: false      # VAD đôi khi cắt nhầm toàn bộ audio → tắt mặc định
+  vad_filter: false      # VAD sometimes trims the entire audio track → off by default
   align: true            # word-level timestamps
 
 separate:
-  model: htdemucs        # demucs model; chạy CPU, tách 2-stem (vocals/no_vocals)
+  model: htdemucs        # demucs model; runs on CPU, 2-stem split (vocals/no_vocals)
+
+diarize:
+  distance_threshold: 0.30  # cosine-distance cut for agglomerative clustering; lower → more speakers
+  min_segment_sec: 0.4      # skip segments shorter than this (too little audio to embed)
 
 asd:
-  sample_fps: 5          # số frame/giây lấy mẫu để detect mặt
-  max_faces: 4           # số mặt tối đa mediapipe theo dõi
-  iou_thresh: 0.3        # ngưỡng IoU để gán detection vào track sẵn có
-  active_std_thresh: 0.012  # std độ mở môi (chuẩn hoá theo chiều cao mặt) → đang nói
-  window: 5              # số frame mỗi bên để tính variance
+  sample_fps: 5          # frames/second sampled for face detection
+  max_faces: 4           # max number of faces mediapipe tracks
+  iou_thresh: 0.3        # IoU threshold to assign a detection to an existing track
+  active_std_thresh: 0.012  # std of lip openness (normalized by face height) → speaking
+  window: 5              # frames per side used to compute variance
 
 av_match:
-  min_score: 0.3         # tỉ lệ sample active tối thiểu để gán face cho segment
+  min_score: 0.3         # min fraction of active samples to assign a face to a segment
 
 frames:
   jpeg_quality: 90
-  # frame đại diện lấy ở giữa segment
+  # representative frame taken at the segment midpoint
 
 vlm:
   ollama_host: http://127.0.0.1:11434
-  model: minicpm-v       # tag thực tế kiểm tra lúc setup; fallback llava
+  model: minicpm-v       # actual tag verified at setup time; fallback llava
   prompt: |
     Mô tả ngắn gọn bối cảnh hình ảnh trong khung hình này bằng tiếng Việt:
     nhân vật (giới tính, độ tuổi ước lượng, trang phục, biểu cảm), bối cảnh,
     và không khí chung. Nếu không có người, mô tả cảnh vật.
   timeout: 120
-  num_gpu: 20            # số layer offload lên GPU (giảm nếu OOM)
+  num_gpu: 20            # number of layers offloaded to GPU (lower if OOM)
 
-# Bật/tắt từng stage
+# Enable/disable each stage
 stages:
-  separate: false        # bật để transcribe trên vocals đã tách (chậm, CPU)
+  separate: false        # enable to transcribe on separated vocals (slow, CPU)
   transcribe: true
+  diarize: true
   asd: true
   av_match: true
   offscreen: true

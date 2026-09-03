@@ -47,6 +47,10 @@ class PipelineContext:
         return self.out_dir / "separated" / "vocals.wav"
 
     @property
+    def diarize_path(self) -> Path:
+        return self.out_dir / "diarize.json"
+
+    @property
     def asd_path(self) -> Path:
         return self.out_dir / "asd_results.json"
 

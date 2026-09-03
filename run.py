@@ -14,6 +14,7 @@ import sys
 from pipeline.context import PipelineContext
 from pipeline.s1_separate import SeparateStage
 from pipeline.s2_transcribe import TranscribeStage
+from pipeline.s2b_diarize import DiarizeStage
 from pipeline.s3_asd import ASDStage
 from pipeline.s4_av_match import AVMatchStage
 from pipeline.s5_offscreen import OffscreenStage
@@ -25,6 +26,7 @@ from pipeline.s8_assemble import AssembleStage
 STAGE_REGISTRY = {
     "separate": SeparateStage,
     "transcribe": TranscribeStage,
+    "diarize": DiarizeStage,
     "asd": ASDStage,
     "av_match": AVMatchStage,
     "offscreen": OffscreenStage,
@@ -33,7 +35,7 @@ STAGE_REGISTRY = {
     "assemble": AssembleStage,
 }
 STAGE_ORDER = [
-    "separate", "transcribe", "asd", "av_match",
+    "separate", "transcribe", "diarize", "asd", "av_match",
     "offscreen", "frames", "vlm_context", "assemble",
 ]
 

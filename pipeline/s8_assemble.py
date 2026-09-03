@@ -50,6 +50,13 @@ class AssembleStage(Stage):
             for r in ctx.read_json(ctx.offscreen_path).get("segments", []):
                 speech_by_seg[int(r["segment"])] = r["speech_type"]
 
+        # diarization: segment -> voice speaker_id (primary identity)
+        voice_by_seg: dict[int, str] = {}
+        if ctx.diarize_path.exists():
+            for r in ctx.read_json(ctx.diarize_path).get("segments", []):
+                if r.get("speaker_id"):
+                    voice_by_seg[int(r["segment"])] = r["speaker_id"]
+
         segments_out = []
         for i, seg in enumerate(segments_in):
             rel = frame_by_seg.get(i)
@@ -57,12 +64,15 @@ class AssembleStage(Stage):
             av = av_by_seg.get(i, {})
             assigned = av.get("assigned_face")
             face_box = av.get("face_box")
+            # voice is primary; fall back to face id when no voice cluster
+            voice_id = voice_by_seg.get(i)
+            speaker_id = voice_id or assigned
             segments_out.append(
                 Segment(
                     start=float(seg.get("start", 0.0)),
                     end=float(seg.get("end", 0.0)),
                     text=(seg.get("text") or "").strip(),
-                    speaker_id=assigned,
+                    speaker_id=speaker_id,
                     speech_type=speech_by_seg.get(i, "onscreen"),
                     face_boxes=[face_box] if face_box else [],
                     is_active_speaker=bool(assigned),
@@ -99,34 +109,63 @@ class AssembleStage(Stage):
         )
 
     def _build_speakers(self, ctx, segments_out) -> list[Speaker]:
-        """Group ASD tracks into speakers with appearance spans + a best frame."""
-        if not ctx.asd_path.exists():
-            return []
-        dets = ctx.read_json(ctx.asd_path).get("detections", [])
-        if not dets:
-            return []
+        """Build the speaker list. Voice clusters (diarize) are primary; ASD
+        face tracks are added for any face ids not already covered by a voice."""
+        speakers: list[Speaker] = []
+        seen: set[str] = set()
 
-        # collect timestamps + pick the frame with widest lip opening as "best"
-        times_by_face: dict[str, list[float]] = defaultdict(list)
-        best_by_face: dict[str, dict] = {}
-        for d in dets:
-            fid = d["face_id"]
-            times_by_face[fid].append(d["t"])
-            if fid not in best_by_face or d["lip"] > best_by_face[fid]["lip"]:
-                best_by_face[fid] = d
-
-        speakers = []
-        for fid in sorted(times_by_face):
-            spans = _merge_spans(sorted(times_by_face[fid]), gap=1.0)
-            speakers.append(
-                Speaker(
-                    id=fid,
-                    appearance_timestamps=[[round(a, 2), round(b, 2)] for a, b in spans],
-                    face_embeddings=[],
-                    best_frames=[],
+        # voice speakers from diarization: spans from segment start/end
+        if ctx.diarize_path.exists():
+            spans_by_voice: dict[str, list[tuple[float, float]]] = defaultdict(list)
+            for r in ctx.read_json(ctx.diarize_path).get("segments", []):
+                sid = r.get("speaker_id")
+                if sid:
+                    spans_by_voice[sid].append((float(r["start"]), float(r["end"])))
+            for sid in sorted(spans_by_voice):
+                merged = _merge_intervals(sorted(spans_by_voice[sid]), gap=1.0)
+                speakers.append(
+                    Speaker(
+                        id=sid,
+                        appearance_timestamps=[[round(a, 2), round(b, 2)] for a, b in merged],
+                        face_embeddings=[],
+                        best_frames=[],
+                    )
                 )
-            )
+                seen.add(sid)
+
+        # face speakers from ASD tracks (only ids not already a voice)
+        if ctx.asd_path.exists():
+            dets = ctx.read_json(ctx.asd_path).get("detections", [])
+            times_by_face: dict[str, list[float]] = defaultdict(list)
+            for d in dets:
+                times_by_face[d["face_id"]].append(d["t"])
+            for fid in sorted(times_by_face):
+                if fid in seen:
+                    continue
+                spans = _merge_spans(sorted(times_by_face[fid]), gap=1.0)
+                speakers.append(
+                    Speaker(
+                        id=fid,
+                        appearance_timestamps=[[round(a, 2), round(b, 2)] for a, b in spans],
+                        face_embeddings=[],
+                        best_frames=[],
+                    )
+                )
         return speakers
+
+
+def _merge_intervals(intervals: list[tuple[float, float]], gap: float) -> list[tuple[float, float]]:
+    """Merge sorted [start, end] intervals, joining those within `gap` seconds."""
+    if not intervals:
+        return []
+    merged = [intervals[0]]
+    for s, e in intervals[1:]:
+        ps, pe = merged[-1]
+        if s - pe <= gap:
+            merged[-1] = (ps, max(pe, e))
+        else:
+            merged.append((s, e))
+    return merged
 
 
 def _merge_spans(times: list[float], gap: float) -> list[tuple[float, float]]:
